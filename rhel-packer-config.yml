@@ -1,0 +1,31 @@
+#############################
+## /rhel-packer-config.yml ##
+#############################
+#
+# Ansible playbook to be ran against hosts after Packer provisioning.
+
+---
+- hosts: all
+  gather_facts: yes
+  become: yes
+  tasks:
+    - name: Create rhel user
+      user:
+        name: rhel
+        state: present
+        generate_ssh_key: yes
+        home: /home/rhel
+        create_home: true
+
+    - name: Grant rhel Sudo Permissions
+      lineinfile:
+        path: /etc/sudoers
+        state: present
+        line: 'rhel ALL=(ALL) ALL'
+        validate: 'visudo -cf %s'
+
+    - name: Set rhel user password - be sure to do this last!
+      user:
+        name: rhel
+        state: present
+        password: "{{ 'newpassword' | password_hash('sha512') }}"

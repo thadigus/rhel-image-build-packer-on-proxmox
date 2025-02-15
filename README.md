@@ -1,93 +1,164 @@
-# RHEL Image Build Packer on Proxmox
+# RHEL Base Image Build with Hashicorp Packer
 
+Automated installations of RHEL 9 with Kickstart files handled via HTTP using Hashicorp Packer against Proxmox Infrastructure. In order to use this repo you will need Packer installed and the RHEL 9 ISO present at `local:iso/rhel-9.5-x86_64-dvd.iso` on the target Proxmox server. This should install RHEL 9 in UEFI mode with a fairly conservative partition table. For further customization I highly recommend editing the kickstart file and Ansible playbook I've provided as these are just templates that can be expanded upon.
 
+Start with installing Packer and editing the sensitive vars file to include your API key and parameters. I've added a set of RSA keys for SSH but I highly suggest you generate/replace them with your own. Also, be sure to set a username in the sensitive vars file and copy the public key string in so that Packer can install these for you. I don't typically set a password for any of my users and only use key based authentication. I've added a task to the Ansible playbook to set a password if you'd like. For any advice/assistance please feel free to open an issue [at the issues tab](https://gitlab.com/thadigus/rhel-image-build-packer-on-proxmox/-/issues).
 
-## Getting started
+Here is a quick example of setting up the repo, after creating your own `rhel-packer-install-sensitive.auto.pkrvars.hcl` file. This is how the SSH keys were generated:
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
+```shell
+[root@archwhitebox code]# ls           
+README.md        rhel-base-install.pkr.hcl  rhel-packer-config.yml                          rhel-packer-install-sensitive.auto.pkrvars.hcl.EXAMPLE
+anaconda-ks.cfg  rhel-packer-build.sh       rhel-packer-install-sensitive.auto.pkrvars.hcl
+[root@archwhitebox code]# ssh-keygen                                          
+Generating public/private rsa key pair.                                       
+Enter file in which to save the key (/root/.ssh/id_rsa): ./id_rsa             
+Enter passphrase (empty for no passphrase):                                   
+Enter same passphrase again:                                                  
+Your identification has been saved in ./id_rsa     
+Your public key has been saved in ./id_rsa.pub                                
+The key fingerprint is:                                                                                                                                     
+SHA256:olkPQoUBi9tgfNPuoRiwbgMpdA693bbX0dK5xZCsuFc root@archwhitebox                                                                                        
+The key's randomart image is:                                                 
++---[RSA 3072]----+                                                           
+|  ...o.          |                                                           
+|....o.      . .  |                                                           
+|+=.=..       +   |                                                           
+|+*=.= .   . + +  |                                                           
+|*..o.++oS. + E o |                                                           
+|+ o o=o+. o + o  |                                                           
+| = .o. ..o o .   |                                                           
+|. .     . .      |                                                           
+|                 |                                                                                                                                         
++----[SHA256]-----+                                                                                                                                         
+[root@archwhitebox code]# ls                                                  
+README.md        id_rsa.pub                 rhel-packer-config.yml                                                                                          
+anaconda-ks.cfg  rhel-base-install.pkr.hcl  rhel-packer-install-sensitive.auto.pkrvars.hcl                                                                  
+id_rsa           rhel-packer-build.sh       rhel-packer-install-sensitive.auto.pkrvars.hcl.EXAMPLE
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/thadigus/rhel-image-build-packer-on-proxmox.git
-git branch -M main
-git push -uf origin main
+
+### Sample Kickstart File
+
+A kickstart file has been provided in this repo, but feel free to customize this to your liking. Kickstart is a really modular and convient system for auto-installing on RHEL machines so there's a ton of options to use. Here is a basic RHEL 9 EFI install with a trimmed up partition table. The root account is locked and the user account is provisioned without a password and only SSH based authentication. Sudo is configured for NOPASSWD for default, but this can be changed with Ansible. I've also configured EPEL 9 to auto-setup in order to install open-vm-tools. Everything else is fairly minimal, there is a comment out SCAP config as well to drop in whatever profile you'd like. Be sure to note the Packer variables noted with `${variablename}` in the file. Those variables are filled by Packer at runtime as a part of the build process.
+
+```kickstart
+### RHEL 9 Kickstart Configuration
+#version=RHEL9
+### Set language, keyboard and timezone
+lang en_US.UTF-8
+keyboard --xlayouts='us'
+timezone America/Indiana/Indianapolis --utc
+### Add kdump Config
+%addon com_redhat_kdump --enable --reserve-mb='auto'
+%end
+### Lock root user
+rootpw --lock
+### Create Ansible user for post provisioning processes
+user --name=${ssh_user}
+sshkey --username=${ssh_user} "${build_key}"
+### Text Install
+text
+### Only Use SDA
+ignoredisk --only-use=sda
+### System Bootloader Configuration
+bootloader --append="crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M" --location=mbr --boot-drive=sda
+### Partition Clearing Information
+clearpart --none --initlabel
+### Create primary system partitions.
+### Modify partition sizes for the virtual machine hardware.
+part /boot --fstype="xfs" --ondisk=sda --size=1024
+part /boot/efi --fstype="efi" --ondisk=sda --size=512 --fsoptions="umask=0077,shortname=winnt"
+part pv.0 --fstype="lvmpv" --ondisk=sda --size=18432
+### Create a logical volume management (LVM) group.
+volgroup vgroot --pesize=4096 pv.0
+### Modify logical volume sizes for the virtual machine hardware.
+logvol / --fstype="ext4" --size=4096 --name=lvroot --vgname=vgroot --label=ROOTFS
+logvol swap --fstype="swap" --size=1024 --name=lvswap --vgname=vgroot --label=SWAPFS
+logvol /home --fstype="ext4" --size=2048 --name=lvhome --vgname=vgroot --label=HOMEFS --fsoptions="nodev,nosuid"
+logvol /tmp --fstype="ext4" --size=2048 --name=lvtmp --vgname=vgroot --label=TMPFS --fsoptions="nodev,noexec,nosuid"
+logvol /opt --fstype="ext4" --size=1024 --name=lvopt --vgname=vgroot --label=OPTFS --fsoptions="nodev"
+logvol /var --fstype="ext4" --size=2048 --name=lvvar --vgname=vgroot --label=VARFS --fsoptions="nodev"
+logvol /var/log --fstype="ext4" --size=2048 --name=lvvarlog --vgname=vgroot --label=LOGFS --fsoptions="nodev,noexec,nosuid"
+logvol /var/log/audit --fstype="ext4" --size=1024 --name=lvvarlogaudit --vgname=vgroot --label=AUDITFS --fsoptions="nodev,noexec,nosuid"
+### Set system Purpose for Red Hat Cloud
+syspurpose --role="Red Hat Enterprise Linux Server" --sla="Self-Support" --usage="Development/Test"
+### Boot with DHCP
+network --bootproto=dhcp
+### Skip grpahical install
+skipx
+firstboot --disable
+### Enable SELinux
+selinux --enforcing
+### Enable firewall but allow SSH
+firewall --enabled --ssh
+### Use SSSD for primary system authentication
+auth --passalgo=sha512 --useshadow
+### Ensure NetworkManager and SSHD are started
+services --enabled=NetworkManager,sshd
+### Reboot after Installation
+reboot
+### Configure SCAP profile - Optional
+#%addon com_redhat_oscap
+#content-type = scap-security-guide
+#profile = xccdf_org.ssgproject.content_profile_ospp
+#%end
+### Post install script to enable EPEL, install open-vm-tools, and configure sudo access for build user. 
+%post --interpreter=/bin/bash
+dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+dnf makecache
+dnf install -y sudo open-vm-tools python3
+echo "${ssh_user} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers.d/${ssh_user}
+sed -i "s/^.*requiretty/#Defaults requiretty/" /etc/sudoers
+%end
+%packages
+@^minimal-environment
+kexec-tools
+%end
+### Reboot after the installation is complete.
+### --eject attempt to eject the media before rebooting.
+reboot --eject
 ```
 
-## Integrate with your tools
+## Packer Configuration
 
-- [ ] [Set up project integrations](https://gitlab.com/thadigus/rhel-image-build-packer-on-proxmox/-/settings/integrations)
+Luckily Packer configures itself for the most part. Be sure to follow Packer documentation for installation and troubleshooting of the first `init` and `verify` steps but most of this should be fairly straight forward. You can use the Packer Docker image to get started but I've had limited compatability with Ansible.
 
-## Collaborate with your team
+### Sample Secure Vars
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+Ensure that your secure vars are configured with at least the following lines at `./rhel-packer-install-sensitive.auto.pkrvars.hcl`. These are the variables that have been set aside to make sure that this works for your given Proxmox environment. The Ansible user is used for post-install steps and for any other customizatoin you'd like to do. Be sure to add your own tasks/roles to `rhel-packer-config.yml` for your own custom template.
 
-## Test and Deploy
+```hcl
+/*
+    DESCRIPTION:
+    Build account variables used for all builds.
+    - Variables are passed to and used by guest operating system configuration files (e.g., ks.cfg, autounattend.xml).
+    - Variables are passed to and used by configuration scripts.
+*/
 
-Use the built-in continuous integration in GitLab.
+// Default Account Credentials
+ssh_user                 = "ANSIBLE_SERVICE_ACCOUNT_USER" //SSH Username for Preseed/Kickstart to configure so Ansible can get into provision afterwards
+build_key                = "ssh-rsa AAAAB3NzaC1yc....x/vq1OaLAz6pYk8=" // Actual public key you'd like installed for the Ansible user to be allowed in.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+/*
+    DESCRIPTION:
+    Proxmox WebUI variables used for Linux builds. 
+    - Variables are use by the source blocks.
+*/
 
-***
+//Proxmox Credentials
+proxmox_host             = "10.x.x.x"
+proxmox_node             = "PROXMOXNODE"
+proxmox_user             = "root@pam!APIKEY"
+proxmox_apikey           = "XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXX"
 
-# Editing this README
+// VM Config
+vlan_tag                 = ""
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### Script for Packer Build processes
 
-## Suggestions for a good README
+I've created a very basic script to run the Packer commands once you're sure that everything is working as intended. I'll probably eventually replace this script with an Ansible playbook to make sure everything is actually setup properly. I recommend running in a container, but I don't have a good container image to recommend. Currently I use a custom RHEL UBI 9 container with Packer and Ansible already installed.
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+```shell
+rhel-packer-build.sh
+```
