@@ -1,6 +1,6 @@
 # RHEL Base Image Build with Hashicorp Packer
 
-Automated installations of RHEL 9 with Kickstart files handled via HTTP using Hashicorp Packer against Proxmox Infrastructure. In order to use this repo you will need Packer installed and the RHEL 9 ISO present at `local:iso/rhel-9.5-x86_64-dvd.iso` on the target Proxmox server. This should install RHEL 9 in UEFI mode with a fairly conservative partition table. For further customization I highly recommend editing the kickstart file and Ansible playbook I've provided as these are just templates that can be expanded upon.
+Automated installations of RHEL 9 with Kickstart files handled via HTTP using Hashicorp Packer against Proxmox Infrastructure. In order to use this repo you will need Packer installed and the RHEL 9 ISO present at `local:iso/rhel-9.6-x86_64-dvd.iso` on the target Proxmox server. Additionally, you can override the path to the ISO location in the sensitive vars file. This should install RHEL 9 in UEFI mode with a fairly conservative partition table. For further customization I highly recommend editing the kickstart file and Ansible playbook I've provided as these are just templates that can be expanded upon.
 
 Start with installing Packer and editing the sensitive vars file to include your API key and parameters. I've added a set of RSA keys for SSH but I highly suggest you generate/replace them with your own. Also, be sure to set a username in the sensitive vars file and copy the public key string in so that Packer can install these for you. I don't typically set a password for any of my users and only use key based authentication. I've added a task to the Ansible playbook to set a password if you'd like. For any advice/assistance please feel free to open an issue [at the issues tab](https://gitlab.com/thadigus/rhel-image-build-packer-on-proxmox/-/issues).
 
@@ -156,6 +156,8 @@ vlan_tag                 = ""
 
 // Optional Override for path to Ansible playbook (assumes you're starting at top level directory on your Git repo)
 // ansible_provisioner_playbook_path = ""
+// Optional override on a different ISO location
+// rhel_boot_iso_path = "local:iso/rhel-9.6-x86_64-dvd.iso"
 ```
 
 ### Script for Packer Build processes

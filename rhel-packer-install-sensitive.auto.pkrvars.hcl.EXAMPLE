@@ -26,4 +26,6 @@ proxmox_apikey           = "XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXX"
 vlan_tag                 = ""
 
 // Optional Override for path to Ansible playbook (assumes you're starting at top level directory on your Git repo)
-// ansible_provisioner_playbook_path = "
+// ansible_provisioner_playbook_path = ""
+// Optional override on a different ISO location
+// rhel_boot_iso_path = "local:iso/rhel-9.6-x86_64-dvd.iso"

@@ -61,6 +61,11 @@ variable "ansible_provisioner_playbook_path" {
     default = "rhel-packer-config.yml"
 }
 
+variable "rhel_boot_iso_path" {
+    type = string
+    default = "local:iso/rhel-9.6-x86_64-dvd.iso"
+}
+
 locals {
   iso_path = "{{var.iso_path}}"
   data_source_content = {
@@ -80,7 +85,7 @@ source "proxmox-iso" "rhel-tpl" {
     node = var.proxmox_node
     boot_iso {
       type = "scsi"
-      iso_file = "local:iso/rhel-9.5-x86_64-dvd.iso"
+      iso_file = var.rhel_boot_iso_path
       unmount = true
     }
     vm_name = "rhel-base-image"
