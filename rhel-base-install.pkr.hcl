@@ -44,6 +44,11 @@ variable "vlan_tag" {
     default = ""
 }
 
+variable "storage_pool" {
+    type = string
+    default = "local-lvm"
+}
+
 variable "ssh_user" {
     type = string
 }
@@ -94,8 +99,9 @@ source "proxmox-iso" "rhel-tpl" {
     token = var.proxmox_apikey
     os = "l26"
     bios = "ovmf"
+    machine = "q35"
     efi_config {
-      efi_storage_pool  = "local-lvm"
+      efi_storage_pool  = var.storage_pool
       pre_enrolled_keys = false
       efi_format        = "raw"
       efi_type          = "4m"
@@ -103,16 +109,16 @@ source "proxmox-iso" "rhel-tpl" {
     qemu_agent = true
     tpm_config {
       tpm_version 	    = "v2.0"
-      tpm_storage_pool  = "local-lvm"
+      tpm_storage_pool  = var.storage_pool
     }
     cpu_type = "host"
     cores = "2"
     memory = "4096"
     scsi_controller = "virtio-scsi-pci"
     disks {
-      type		          = "sata"
+      type		          = "scsi"
       disk_size         = "20G"
-      storage_pool      = "local-lvm"
+      storage_pool      = var.storage_pool
       format		        = "raw"
     }
     network_adapters {

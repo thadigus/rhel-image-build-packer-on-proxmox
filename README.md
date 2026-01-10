@@ -153,6 +153,7 @@ proxmox_apikey           = "XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXX"
 
 // VM Config
 vlan_tag                 = ""
+storage_pool             = ""
 
 // Optional Override for path to Ansible playbook (assumes you're starting at top level directory on your Git repo)
 // ansible_provisioner_playbook_path = ""
