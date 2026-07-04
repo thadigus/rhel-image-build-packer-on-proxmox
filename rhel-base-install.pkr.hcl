@@ -31,6 +31,11 @@ variable "proxmox_node" {
     type = string
 }
 
+variable "proxmox_url" {
+    type = string
+    default = ""
+}
+
 variable "proxmox_user" {
     type = string
 }
@@ -72,6 +77,7 @@ variable "rhel_boot_iso_path" {
 }
 
 locals {
+  proxmox_api_url = var.proxmox_url != "" ? var.proxmox_url : "https://${var.proxmox_host}:8006/api2/json"
   iso_path = "{{var.iso_path}}"
   data_source_content = {
     "/ks.cfg" = templatefile("${abspath(path.root)}/anaconda-ks.cfg", {
@@ -85,7 +91,7 @@ locals {
 
 source "proxmox-iso" "rhel-tpl" {
 
-    proxmox_url = "https://${var.proxmox_host}:8006/api2/json"
+    proxmox_url = local.proxmox_api_url
     insecure_skip_tls_verify = true
     node = var.proxmox_node
     boot_iso {
@@ -148,5 +154,4 @@ build {
     ]
   }
 }
-
 

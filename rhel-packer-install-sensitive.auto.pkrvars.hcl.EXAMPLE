@@ -18,6 +18,7 @@ build_key                = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQChR8HPhiUseC8I
 
 //Proxmox Credentials
 proxmox_host             = "10.x.x.x"
+proxmox_url              = "https://prox.turnerservices.cloud/api2/json"
 proxmox_node             = "PROXMOXNODE"
 proxmox_user             = "root@pam!APIKEY"
 proxmox_apikey           = "XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXX"
